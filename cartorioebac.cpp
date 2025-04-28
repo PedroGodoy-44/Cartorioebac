@@ -3,11 +3,15 @@
 #include <locale.h>
 #include <string.h>
 #include <ctype.h>
+#include <stdbool.h>
 
 // Constantes
 #define MAX_LENGTH 40
 #define MAX_BUFFER 255
 #define ARQUIVO_REGISTROS "registros.txt"
+#define USERNAME "admin"
+#define PASSWORD "admin"
+#define MAX_TENTATIVAS 3
 
 // Estrutura para armazenar dados do usuário
 typedef struct {
@@ -20,6 +24,7 @@ typedef struct {
 // Protótipos de funções
 void limparBuffer();
 void pausarTela();
+bool fazerLogin();
 void exibirMenu();
 int validarCPF(const char *cpf);
 void registrarRegistro();
@@ -32,11 +37,22 @@ void removerRegistroArquivoMestre(const char *cpf);
 int main() {
     setlocale(LC_ALL, "pt_BR.UTF-8");
     
+    // Sistema de login
+    if (!fazerLogin()) {
+        printf("Acesso negado. Saindo do sistema...\n");
+        return 1;
+    }
+    
     int opcao = 0;
     
     while (1) {
         exibirMenu();
-        scanf("%d", &opcao);
+        if (scanf("%d", &opcao) != 1) {
+            limparBuffer();
+            printf("Entrada inválida!\n");
+            pausarTela();
+            continue;
+        }
         limparBuffer();
 
         switch (opcao) {
@@ -66,6 +82,68 @@ int main() {
     return 0;
 }
 
+bool fazerLogin() {
+    char username[MAX_LENGTH];
+    char password[MAX_LENGTH];
+    int tentativas = 0;
+    
+    #ifdef _WIN32
+    system("cls");
+    #else
+    system("clear");
+    #endif
+    
+    printf("=== SISTEMA DE GERENCIAMENTO DE REGISTROS ===\n");
+    printf("=== LOGIN ===\n\n");
+    
+    while (tentativas < MAX_TENTATIVAS) {
+        printf("Usuário: ");
+        if (scanf("%39s", username) != 1) {
+            limparBuffer();
+            continue;
+        }
+        limparBuffer();
+        
+        printf("Senha: ");
+        
+        // Desativar eco para esconder senha
+        #ifdef _WIN32
+        system("pause>nul");
+        #else
+        system("stty -echo");
+        #endif
+        
+        if (scanf("%39s", password) != 1) {
+            limparBuffer();
+            #ifdef _WIN32
+            system("pause>nul");
+            #else
+            system("stty echo");
+            #endif
+            continue;
+        }
+        limparBuffer();
+        
+        #ifdef _WIN32
+        system("pause>nul");
+        #else
+        system("stty echo");
+        #endif
+        printf("\n");
+        
+        if (strcmp(username, USERNAME) == 0 && strcmp(password, PASSWORD) == 0) {
+            printf("Login bem-sucedido!\n");
+            pausarTela();
+            return true;
+        } else {
+            tentativas++;
+            printf("Usuário ou senha incorretos. Tentativas restantes: %d\n", MAX_TENTATIVAS - tentativas);
+        }
+    }
+    
+    return false;
+}
+
 void limparBuffer() {
     int c;
     while ((c = getchar()) != '\n' && c != EOF);
@@ -88,6 +166,7 @@ void exibirMenu() {
     #endif
 
     printf("### Cartório de Nomes da EBAC ###\n\n");
+    printf("Usuário: ADMIN\n\n");
     printf("Menu Principal:\n\n");
     printf("1. Registrar novo nome\n");
     printf("2. Consultar registro\n");
@@ -98,7 +177,6 @@ void exibirMenu() {
 }
 
 int validarCPF(const char *cpf) {
-    // Implementação básica de validação
     if (strlen(cpf) != 11) {
         return 0;
     }
@@ -114,14 +192,16 @@ int validarCPF(const char *cpf) {
 
 void registrarRegistro() {
     Registro reg;
-    char arquivo[MAX_LENGTH + 5]; // +5 para ".txt" e null terminator
+    char arquivo[MAX_LENGTH + 5];
     
     printf("\n--- Novo Registro ---\n");
     
-    // Solicitar e validar CPF
     do {
         printf("CPF (apenas números): ");
-        scanf("%11s", reg.cpf);
+        if (scanf("%11s", reg.cpf) != 1) {
+            limparBuffer();
+            continue;
+        }
         limparBuffer();
         
         if (!validarCPF(reg.cpf)) {
@@ -129,7 +209,6 @@ void registrarRegistro() {
         }
     } while (!validarCPF(reg.cpf));
     
-    // Verificar se CPF já existe
     sprintf(arquivo, "%s.txt", reg.cpf);
     FILE *file = fopen(arquivo, "r");
     if (file != NULL) {
@@ -138,7 +217,6 @@ void registrarRegistro() {
         return;
     }
     
-    // Coletar demais dados
     printf("Nome: ");
     scanf("%39s", reg.nome);
     limparBuffer();
@@ -151,7 +229,6 @@ void registrarRegistro() {
     scanf("%39s", reg.cargo);
     limparBuffer();
     
-    // Salvar em arquivo individual
     file = fopen(arquivo, "w");
     if (file == NULL) {
         printf("Erro ao criar arquivo de registro!\n");
@@ -161,9 +238,7 @@ void registrarRegistro() {
     fprintf(file, "%s,%s,%s,%s", reg.cpf, reg.nome, reg.sobrenome, reg.cargo);
     fclose(file);
     
-    // Adicionar ao arquivo mestre
     salvarRegistroArquivoMestre(&reg);
-    
     printf("\nRegistro cadastrado com sucesso!\n");
 }
 
@@ -194,7 +269,6 @@ void consultarRegistro() {
     printf("-----------------\n");
     
     while (fgets(buffer, MAX_BUFFER, file)) {
-        // Separar os campos e exibir formatado
         char *token = strtok(buffer, ",");
         printf("CPF: %s\n", token);
         
@@ -248,10 +322,8 @@ void listarTodosRegistros() {
     int count = 0;
     
     while (fgets(buffer, MAX_BUFFER, file)) {
-        // Remover quebra de linha
         buffer[strcspn(buffer, "\n")] = 0;
         
-        // Separar os campos
         char *cpf = strtok(buffer, ",");
         char *nome = strtok(NULL, ",");
         char *sobrenome = strtok(NULL, ",");
@@ -287,7 +359,6 @@ void removerRegistroArquivoMestre(const char *cpf) {
     FILE *file = fopen(ARQUIVO_REGISTROS, "r");
     if (file == NULL) return;
     
-    // Criar arquivo temporário
     FILE *temp = fopen("temp.txt", "w");
     if (temp == NULL) {
         fclose(file);
@@ -312,7 +383,6 @@ void removerRegistroArquivoMestre(const char *cpf) {
     fclose(file);
     fclose(temp);
     
-    // Substituir arquivo original pelo temporário
     if (encontrado) {
         remove(ARQUIVO_REGISTROS);
         rename("temp.txt", ARQUIVO_REGISTROS);
